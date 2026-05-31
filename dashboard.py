@@ -2,7 +2,7 @@
 # ASSESSMENT 4: RETAIL SALES ANALYTICAL DASHBOARD
 # ICT702 Business Analytics and Visualisation
 # Tool: Python Dash + Plotly
-# Run: python dashboard.py  →  open http://127.0.0.1:8050 in your browser
+# Run: python dashboard.py  
 # =============================================================================
 
 import pandas as pd
@@ -502,55 +502,82 @@ def update_stores(store, year, store_type, holiday_only):
     store_rev = dff.groupby(["Store","Type"])["Weekly_Sales"].sum().reset_index()
     store_rev = store_rev.sort_values("Weekly_Sales", ascending=False)
 
-    top_stores = store_rev.head(10).copy()
-    bot_stores = store_rev.tail(10).copy()
-    top_stores["Category"] = "Top 10"
-    bot_stores["Category"] = "Bottom 10"
-    top10 = pd.concat([top_stores, bot_stores]).drop_duplicates()
-    top10["Label"] = "Store " + top10["Store"].astype(str)
-    fig_bar = px.bar(
-        top10.sort_values("Weekly_Sales"),
-        x="Weekly_Sales", y="Label", orientation="h",
-        color="Type",
-        title="Store Revenue: Top 10 vs Bottom 10",
-        labels={"Weekly_Sales": "Total Sales ($)", "Label": ""},
-        color_discrete_map={"A":COLORS["primary"],"B":COLORS["accent"],"C":COLORS["success"]}
-    )
-    fig_bar.update_layout(**PLOTLY_TEMPLATE["layout"])
-    fig_bar.update_xaxes(tickprefix="$", tickformat=",.2s")
+    n = len(store_rev)
+
+    if n == 0:
+        fig_bar = px.bar(title="No data available for selected filters")
+    else:
+        top_n = min(10, n)
+
+        top_stores = store_rev.head(top_n).copy()
+        bot_stores = store_rev.tail(top_n).copy()
+
+        top_stores["Category"] = "Top 10"
+        bot_stores["Category"] = "Bottom 10"
+
+        top10 = pd.concat([top_stores, bot_stores]).drop_duplicates(subset=["Store"]).reset_index(drop=True)
+        top10["Label"] = "Store " + top10["Store"].astype(str)
+
+        fig_bar = px.bar(
+            top10.sort_values("Weekly_Sales"),
+            x="Weekly_Sales",
+            y="Label",
+            orientation="h",
+            color="Category",                     # ← Changed to Category
+            title=f"Store Revenue: Top {top_n} vs Bottom {top_n}",
+            labels={"Weekly_Sales": "Total Sales ($)", "Label": ""},
+            color_discrete_map={
+                "Top 10": COLORS["primary"],
+                "Bottom 10": COLORS["accent"]
+            }
+        )
+        fig_bar.update_layout(**PLOTLY_TEMPLATE["layout"])
+        fig_bar.update_xaxes(tickprefix="$", tickformat=",.2s")
 
     # 2. Size vs Sales scatter
-    store_summary = dff.groupby(["Store","Type","Size"])["Weekly_Sales"].mean().reset_index()
-    fig_scatter = px.scatter(
-        store_summary, x="Size", y="Weekly_Sales", color="Type",
-        size="Weekly_Sales", hover_data=["Store"],
-        title="Store Size vs Avg Weekly Sales",
-        labels={"Weekly_Sales": "Avg Weekly Sales ($)", "Size": "Store Size (sq ft)"},
-        color_discrete_map={"A":COLORS["primary"],"B":COLORS["accent"],"C":COLORS["success"]}
-    )
-    fig_scatter.update_layout(**PLOTLY_TEMPLATE["layout"])
-    fig_scatter.update_yaxes(tickprefix="$", tickformat=",.0f")
+    store_summary = dff.groupby(["Store", "Type", "Size"])["Weekly_Sales"].mean().reset_index()
+    
+    if len(store_summary) == 0:
+        fig_scatter = px.scatter(title="No data available")
+    else:
+        fig_scatter = px.scatter(
+            store_summary, 
+            x="Size", 
+            y="Weekly_Sales", 
+            color="Type",
+            size="Weekly_Sales", 
+            hover_data=["Store"],
+            title="Store Size vs Avg Weekly Sales",
+            labels={"Weekly_Sales": "Avg Weekly Sales ($)", "Size": "Store Size (sq ft)"},
+            color_discrete_map={"A": COLORS["primary"], "B": COLORS["accent"], "C": COLORS["success"]}
+        )
+        fig_scatter.update_layout(**PLOTLY_TEMPLATE["layout"])
+        fig_scatter.update_yaxes(tickprefix="$", tickformat=",.0f")
 
-    # 3. Heatmap: store vs month
-    heat_data = dff.groupby(["Store","Month"])["Weekly_Sales"].mean().reset_index()
-    heat_pivot = heat_data.pivot(index="Store", columns="Month", values="Weekly_Sales").fillna(0)
-    month_labels = ["Jan","Feb","Mar","Apr","May","Jun",
-                    "Jul","Aug","Sep","Oct","Nov","Dec"]
-    cols = [month_labels[c-1] for c in heat_pivot.columns]
-    fig_heat = go.Figure(go.Heatmap(
-        z=heat_pivot.values,
-        x=cols,
-        y=[f"S{s}" for s in heat_pivot.index],
-        colorscale="Blues",
-        colorbar=dict(title="Avg Sales ($)", tickprefix="$")
-    ))
-    fig_heat.update_layout(
-        title="Store x Month Sales Heatmap",
-        xaxis_title="Month",
-        yaxis_title="Store",
-        height=500,
-        **PLOTLY_TEMPLATE["layout"]
-    )
+    # 3. Heatmap
+    heat_data = dff.groupby(["Store", "Month"])["Weekly_Sales"].mean().reset_index()
+    if len(heat_data) == 0:
+        fig_heat = go.Figure()
+        fig_heat.update_layout(title="No data available", **PLOTLY_TEMPLATE["layout"])
+    else:
+        heat_pivot = heat_data.pivot(index="Store", columns="Month", values="Weekly_Sales").fillna(0)
+        month_labels = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+        cols = [month_labels[c-1] for c in heat_pivot.columns]
+
+        fig_heat = go.Figure(go.Heatmap(
+            z=heat_pivot.values,
+            x=cols,
+            y=[f"S{s}" for s in heat_pivot.index],
+            colorscale="Blues",
+            colorbar=dict(title="Avg Sales ($)", tickprefix="$")
+        ))
+        fig_heat.update_layout(
+            title="Store x Month Sales Heatmap",
+            xaxis_title="Month",
+            yaxis_title="Store",
+            height=500,
+            **PLOTLY_TEMPLATE["layout"]
+        )
 
     return fig_bar, fig_scatter, fig_heat
 
